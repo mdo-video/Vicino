@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Estrai Vicino.zip
+        run: |
+          mkdir -p _proj
+          unzip -q -o Vicino.zip -d _proj
+          cd _proj
+          if [ ! -f settings.gradle.kts ]; then cd "$(dirname "$(find . -name settings.gradle.kts | head -n1)")"; fi
+          echo "PROJ=$(pwd)" >> "$GITHUB_ENV"
+
+      - name: Compila APK
+        working-directory: ${{ env.PROJ }}
+        run: gradle assembleRelease --no-daemon
+
+      - name: Prepara file
+        run: cp "${{ env.PROJ }}/app/build/outputs/apk/release/app-release.apk" Vicino.apk
+
+      - name: Carica APK come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vicino-APK
+          path: Vicino.apk
+
+      - name: Pubblica release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.${{ github.run_number }}" Vicino.apk \
+            --target "${{ github.sha }}" \
+            --title "Vicino 1.${{ github.run_number }}" \
+            --notes "Installa Vicino.apk sopra la versione esistente (non serve disinstallare)." \
+            --latest
